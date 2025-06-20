@@ -1,0 +1,44 @@
+name: Create Release
+
+on:
+  push:
+    tags: 
+      - 'v*'
+
+jobs:
+  release:
+    name: Build & Release Go Binaries
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with: { go-version: '1.24.3' }
+
+      - name: Get release notes from CHANGELOG
+        id: get_release_notes
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          # Finds tag line and print until the next ## or end of file.
+          NOTES=$(awk "/^## \\[${TAG#v}\\]/{flag=1; next} /^## \\[/{flag=0} flag" CHANGELOG.md)
+          # Make the notes available to subsequent steps
+          echo "notes<<EOF" >> $GITHUB_OUTPUT
+          echo "$NOTES" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v5
+        with:
+          distribution: goreleaser
+          version: latest
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GORELEASER_CURRENT_TAG: ${{ github.ref_name }}
+          GORELEASER_RELEASE_NOTES: ${{ steps.get_release_notes.outputs.notes }}
